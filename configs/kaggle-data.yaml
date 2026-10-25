@@ -1,0 +1,39 @@
+# Data spec for the Neuron hybrid Wikipedia pretraining run.
+# The default pretrained tokenizer is configured below; the training budget comes from the manifest.
+tokenizer: tokenizer/tokenizer.json
+tokenizer_repo: meta-llama/Llama-2-7b-hf
+val_interval: 997            # ~0.1% of docs -> val (crc-hash based)
+doc_min_chars: 1
+doc_max_chars: 0       # 0 = no character truncation
+doc_max_tokens: 0       # 0 = no token truncation
+shard_tokens: 16_777_216     # 32MB per shard
+buffer_tokens: 16_777_216
+seq_len: 1024
+
+sources:
+  - id: wikipedia_english
+    kind: hf_streaming
+    dataset:
+      path: oriental-lab/wikipedia-english
+    split: train
+    text_field: text
+    max_tokens: 0             # 0 = stream the complete dataset
+
+  # --- Optional additional sources (uncomment to mix them with Wikipedia) ---
+  # - id: python_edu
+  #   kind: hf_streaming
+  #   dataset:
+  #     path: openstack/python-edu     # high-quality Python files
+  #   split: train
+  #   text_field: content
+  #   max_tokens: 1_000_000_000
+  #   weight: 1.0
+  #
+  # - id: open_web_math
+  #   kind: hf_streaming
+  #   dataset:
+  #     path: open-web-math/open-web-math
+  #   split: train
+  #   text_field: text
+  #   max_tokens: 700_000_000
+  #   weight: 1.0

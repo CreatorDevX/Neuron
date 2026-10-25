@@ -1,0 +1,8 @@
+Copyright 2026 Neuron contributors
+
+Neuron is licensed under the Apache License, Version 2.0. A copy of that license
+is provided in LICENSE.
+
+Third-party source code in third_party/flash-attention-turing is not covered by
+Neuron's Apache-2.0 license. See THIRD_PARTY_NOTICES.md for its attribution and
+license status.

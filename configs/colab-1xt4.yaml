@@ -1,0 +1,52 @@
+# Colab single-T4 profile. Keeps the same 65,536-token global batch as Kaggle
+# by using more accumulation steps on one GPU.
+model:
+  vocab_size: 32000
+  d_model: 768
+  n_layers: 12
+  n_heads: 12
+  n_kv_heads: 4
+  ffn_hidden: 2048
+  seq_len: 1024
+  tie_embeddings: true
+  attention: block_sparse
+  hybrid_gdn: true
+  gdn_backend: auto
+  gdn_conv_kernel_size: 4
+  sparse_block_size: 128
+  sparse_top_blocks: 4
+  local_window: 128
+  use_engram: true
+  engram_ngram: 3
+  engram_vocab_size: [80000, 80000]
+  engram_table_dim: 64
+  loss_chunk: 128
+
+train:
+  data_dir: data
+  out_dir: runs/neuron-pretrain
+  tokenizer_path: tokenizer/tokenizer.json
+  micro_batch: 8
+  grad_accum: 8
+  total_tokens: 1000000000
+  train_on_all_data: true
+  lr: 0.0008
+  warmup_tokens: 20000000
+  stable_ratio: 0.8
+  optimizer_type: muon_adamw_8bit
+  dtype: auto
+  compile: false
+  compile_mode: default
+  grad_checkpointing: true
+  num_workers: 2
+  prefetch_factor: 4
+  pin_memory: true
+  log_every: 25
+  eval_every: 1000
+  eval_batch: 8
+  eval_batches: 8
+  ckpt_every_steps: 1000
+  ckpt_every_min: 10
+  keep_last: 2
+  sample_prompts: ["The", "Wikipedia is"]
+  wandb_project: neuron-wikipedia-pretrain

@@ -1,0 +1,77 @@
+# Experimental block-sparse T4 config. Uses a 128-token causal local window
+# plus four evenly spaced remote KV blocks per query block.
+#
+# Architecture: block-sparse attention, hybrid GDN layers, and Engram memory.
+model:
+  vocab_size: 32000           # must match tokenizer/tokenizer.json
+  d_model: 768
+  n_layers: 12
+  n_heads: 12
+  n_kv_heads: 4               # GQA 12q/4kv -> -3.1M params, faster inference
+  ffn_hidden: 2048            # SwiGLU ~8/3 ratio
+  seq_len: 1024               # initial pretraining context
+  rope_theta: 10000.0
+  norm_eps: 1.0e-5
+  tie_embeddings: true
+  init_std: 0.02
+  attention: block_sparse
+  hybrid_gdn: true            # attention on layer 0, then three GDN layers; repeat
+  gdn_backend: auto            # use FLA when installed, otherwise PyTorch reference
+  gdn_conv_kernel_size: 4
+  sparse_block_size: 128
+  sparse_top_blocks: 4
+  local_window: 128
+  use_engram: true
+  engram_ngram: 3
+  engram_vocab_size: [80000, 80000]
+  engram_table_dim: 64
+  loss_chunk: 256             # fewer LM-head/CE launches; still bounds peak logits memory
+
+train:
+  data_dir: data
+  out_dir: runs/neuron-block-sparse
+  tokenizer_path: tokenizer/tokenizer.json
+
+  # global batch = 16 x 4 x 1024 = 65,536 tokens/step (per GPU; x2 ranks on 2 GPUs)
+  micro_batch: 16
+  grad_accum: 4               # on 2x T4: --set train.grad_accum=2 keeps 64k global batch
+
+  total_tokens: 1_000_000_000 # replaced with manifest size by train_on_all_data
+  train_on_all_data: true
+  lr: 8.0e-4                  # peak; WSD schedule; validate 5e-4/8e-4/1.2e-3 on smoke runs
+  min_lr_ratio: 0.05
+  schedule: wsd
+  warmup_tokens: 130_000_000  # ~2000 steps
+  stable_ratio: 0.85          # gives room to extend the run cheaply
+  decay_shape: linear
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  eps: 1.0e-8
+  grad_clip: 1.0
+  optimizer_type: muon_adamw_8bit
+
+  dtype: auto                 # T4 -> float16 (no bf16 on Turing) + GradScaler
+  compile: false              # sparse path chunks queries in eager Python
+  compile_mode: default       # try max-autotune-no-cudagraphs in a side bench
+  compile_dynamic: false
+  grad_checkpointing: true    # Engram and hybrid activations increase memory use
+
+  num_workers: 2              # token loading is trivial; 2 keeps vCPU free
+  prefetch_factor: 8
+  pin_memory: true
+
+  log_every: 25
+  eval_every: 2000            # ~130M tokens between evals
+  eval_batch: 16
+  eval_batches: 24            # ~393k tokens per eval (~0.3% overhead)
+  ckpt_every_steps: 2000
+  ckpt_every_min: 45          # preemption safety net (Colab/Kaggle kill machines)
+  keep_last: 3
+
+  sample_every: 0             # set >0 + tokenizer present to eyeball generations
+  sample_prompts: ["The", "The quick brown fox", "Q: What is the capital of France?\nA:"]
+
+  wandb_project: ""           # set + --wandb to upload curves
+  allow_tf32: false           # irrelevant on T4 but disable for cleanliness
+  anomaly_debug: false
