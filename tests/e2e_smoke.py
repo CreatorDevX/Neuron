@@ -78,6 +78,7 @@ cfg["model"]["vocab_size"] = meta["vocab_size"]
 cfg["model"]["seq_len"] = 64
 cfg["train"]["data_dir"] = str(TMP / "data")
 cfg["train"]["out_dir"] = str(TMP / "runs" / "smoke")
+cfg["train"]["tokenizer_path"] = str(TMP / "tok" / "tokenizer.json")
 cfg["train"]["micro_batch"] = 2
 cfg["train"]["total_tokens"] = 20_000
 cfg["train"]["ckpt_every_steps"] = 8
@@ -85,10 +86,12 @@ cfg["train"]["eval_batch"] = 4
 cfg["train"]["eval_batches"] = 2
 cfg_path = TMP / "smoke.yaml"
 cfg_path.write_text(yaml.safe_dump(cfg))
-run([sys.executable, "-m", "neuron.train", "--config", str(cfg_path), "--resume", "none"])
+run([sys.executable, "-m", "neuron.train", "--config", str(cfg_path),
+     "--spec", str(spec_path), "--resume", "none"])
 
 # ---- 5. resume = none reload from ckpt (auto-resume path) --------------------
-run([sys.executable, "-m", "neuron.train", "--config", str(cfg_path)])  # auto-resume tiny
+run([sys.executable, "-m", "neuron.train", "--config", str(cfg_path),
+     "--spec", str(spec_path)])  # auto-resume tiny
 
 # ---- 6. evaluate -------------------------------------------------------------
 run([sys.executable, "-m", "neuron.evaluate", "--ckpt", str(TMP / "runs" / "smoke" / "final.pt"),

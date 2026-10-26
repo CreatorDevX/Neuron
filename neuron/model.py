@@ -1074,7 +1074,7 @@ class GPT(nn.Module):
         for h, t in zip(hidden.split(self.cfg.loss_chunk, dim=1), targets.split(self.cfg.loss_chunk, dim=1)):
             logits = self.lm_head(h)
             total = total + F.cross_entropy(
-                logits.reshape(-1, logits.size(-1)), t.reshape(-1), reduction="sum"
+                logits.reshape(-1, logits.size(-1)), t.reshape(-1).long(), reduction="sum"
             )
         return total / targets.numel()
 

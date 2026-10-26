@@ -11,6 +11,7 @@ dist/
 *.egg-info/
 runs/
 data/
+_scratch/
 tokenizer/corpus.sample.txt
 tokenizer/tokenizer.json
 tokenizer/tokenizer.meta.json

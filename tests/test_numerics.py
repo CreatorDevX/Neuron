@@ -46,14 +46,14 @@ def test_chunked_ce():
     model.train()
     _, loss_chunked = model(x, targets=targets)
 
-    # single-shot reference
+    # Single-shot reference uses the same vocabulary projection as GPT._loss.
     import torch.nn.functional as F
     hidden = model.tok_emb(x)
     for block in model.blocks:
         hidden = block(hidden, model.rope_cos, model.rope_sin)
     hidden = model.norm_f(hidden)
-    ref = F.cross_entropy(hidden.view(-1, m.vocab_size), targets.view(-1))
-    # positional CE excludes the final token (model computes x[:-1]->targets[1:])
+    logits = model.lm_head(hidden)
+    ref = F.cross_entropy(logits.view(-1, m.vocab_size), targets.view(-1))
     torch.testing.assert_close(loss_chunked, ref, rtol=1e-5, atol=1e-6)
     print("  chunked CE equivalence: ok")
 
