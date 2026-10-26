@@ -28,11 +28,26 @@ def upload_checkpoint(path: str, out_dir: str) -> None:
     log = Path(out_dir) / "log.jsonl"
     if log.exists():
         batch_bucket_files(bucket, add=[(str(log), f"{os.environ.get('HF_BUCKET_PREFIX', 'neuron')}/log.jsonl")])
+    samples = Path(out_dir) / "samples.jsonl"
+    if samples.exists():
+        batch_bucket_files(bucket, add=[(str(samples), f"{os.environ.get('HF_BUCKET_PREFIX', 'neuron')}/samples.jsonl")])
     batch_bucket_files(bucket, add=[(str(local), remote)])
     # Publish the resume pointer last, after the checkpoint and run metadata land.
     latest = Path(out_dir) / "latest.json"
     if latest.exists():
         batch_bucket_files(bucket, add=[(str(latest), f"{os.environ.get('HF_BUCKET_PREFIX', 'neuron')}/latest.json")])
+
+
+def upload_samples(out_dir: str) -> None:
+    """Upload the generated text sample log when a bucket is configured."""
+    bucket = bucket_id()
+    samples = Path(out_dir) / "samples.jsonl"
+    if not bucket or not samples.is_file():
+        return
+    from huggingface_hub import batch_bucket_files
+
+    remote = f"{os.environ.get('HF_BUCKET_PREFIX', 'neuron')}/samples.jsonl"
+    batch_bucket_files(bucket, add=[(str(samples), remote)])
 
 
 def restore_latest(out_dir: str) -> str | None:

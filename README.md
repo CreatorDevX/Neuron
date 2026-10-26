@@ -43,6 +43,8 @@ python -m neuron.train --config configs/neuron-100m-t4.yaml \
   --set train.micro_batch=2 train.grad_accum=32 model.local_window=128
 ```
 
+The Colab and Kaggle launchers choose a preset from the available GPU count and accept a `MANUAL_TRAIN_OVERRIDES` list for any config values you want to change. During training, the configured prompts are generated after evaluation and checkpoint events. Samples are appended to `runs/neuron-pretrain/samples.jsonl` (or the configured run directory) and synced to the Hugging Face Storage Bucket at evaluation/checkpoint time, alongside checkpoint uploads.
+
 ## Tokenizer
 
 The default is the fast tokenizer from [`meta-llama/Llama-2-7b-hf`](https://huggingface.co/meta-llama/Llama-2-7b-hf). Neuron downloads tokenizer assets only; it does not download or use Llama model weights. The Llama repository is gated: accept Meta's license terms and request access through Hugging Face before running setup. Set `HF_TOKEN` in `.env` to a Hugging Face user access token with read permission for the tokenizer.

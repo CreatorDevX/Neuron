@@ -155,6 +155,8 @@ class TrainConfig:
     keep_last: int = 3
 
     sample_every: int = 0            # steps; 0 disables
+    sample_on_eval: bool = False     # also sample at each evaluation event
+    sample_on_checkpoint: bool = False  # also sample at each checkpoint/bucket event
     sample_prompts: tuple = ()       # filled by yaml list
 
     wandb_project: str = ""

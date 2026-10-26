@@ -69,6 +69,8 @@ train:
   keep_last: 3
 
   sample_every: 0             # set >0 + tokenizer present to eyeball generations
+  sample_on_eval: true        # generate configured prompts after each evaluation
+  sample_on_checkpoint: true  # generate prompts before each checkpoint/bucket upload
   sample_prompts: ["The", "The quick brown fox", "Q: What is the capital of France?\nA:"]
 
   wandb_project: ""           # set + --wandb to upload curves

@@ -209,20 +209,32 @@ def _mb_of(loader):
 
 
 @torch.no_grad()
-def sample_texts(model, tokenizer, prompts, bos_id, eos_id, device, make_acx) -> None:
+def sample_texts(model, tokenizer, prompts, bos_id, eos_id, device, make_acx, step: int) -> list[dict]:
     core = unwrap(model)
     was_training = core.training
     core.eval()
+    rows = []
     for prompt in prompts:
         ids = tokenizer.encode(prompt, add_special_tokens=False).ids
         idx = torch.tensor([[bos_id] + ids], dtype=torch.long, device=device)
         with make_acx():
             out = core.generate(idx, max_new_tokens=48, temperature=0.8, top_k=50,
                                 eos_id=eos_id)
-        gen = tokenizer.decode(out[0, idx.shape[1]:].tolist(), skip_special_tokens=False)
-        print(f"[sample] {prompt[:36]!r} -> {gen[:140].replace(chr(10), ' ')!r}", flush=True)
+        gen = tokenizer.decode(out[0, idx.shape[1]:].tolist(), skip_special_tokens=True)
+        print(f"[sample] step {step:,} | {prompt[:36]!r} -> {gen[:140].replace(chr(10), ' ')!r}", flush=True)
+        rows.append({"step": step, "prompt": prompt, "generation": gen, "t": time.time()})
     if was_training:
         core.train()
+    return rows
+
+
+def append_samples(out_dir: str, rows: list[dict]) -> None:
+    if not rows:
+        return
+    path = Path(out_dir) / "samples.jsonl"
+    with path.open("a", encoding="utf-8") as stream:
+        for row in rows:
+            stream.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def get_tokenizer(path: str, data_dir: str):
@@ -570,6 +582,7 @@ def main(argv=None) -> None:
     accum = tcfg.grad_accum
     mb = tcfg.micro_batch
     steps_in_run = steps_total - start_step
+    last_sample_step = -1
 
     def rank_stream() -> Iterator[int]:
         # block layout per step: [micro 0: rank0, rank1...][micro 1: ...]
@@ -711,14 +724,6 @@ def main(argv=None) -> None:
                         identity=run_identity, rng_by_rank=rng_by_rank,
                     )
 
-            if tcfg.sample_every and is_main and step % tcfg.sample_every == 0 \
-                    and tokenizer is not None and bos_id is not None:
-                try:
-                    prompts = list(tcfg.sample_prompts) or ["The "]
-                    sample_texts(model, tokenizer, prompts, bos_id, eos_id, device, make_acx)
-                except Exception as e:  # noqa: BLE001
-                    print(f"[warn] sampling failed: {e}", flush=True)
-
             due = (
                 (tcfg.ckpt_every_steps > 0 and step % tcfg.ckpt_every_steps == 0)
                 or (tcfg.ckpt_every_min > 0 and (time.time() - ck_last_t) >= tcfg.ckpt_every_min * 60.0)
@@ -727,6 +732,26 @@ def main(argv=None) -> None:
                 due_tensor = torch.tensor([int(due) if is_main else 0], device=device)
                 torch.distributed.broadcast(due_tensor, src=0)
                 due = bool(due_tensor.item())
+
+            sample_due = (
+                (tcfg.sample_every > 0 and step % tcfg.sample_every == 0)
+                or (tcfg.sample_on_eval and eval_due)
+                or (tcfg.sample_on_checkpoint and due)
+            )
+            if sample_due and is_main and tokenizer is not None and bos_id is not None:
+                try:
+                    prompts = list(tcfg.sample_prompts) or ["The "]
+                    samples = sample_texts(
+                        model, tokenizer, prompts, bos_id, eos_id, device, make_acx, step
+                    )
+                    append_samples(tcfg.out_dir, samples)
+                    last_sample_step = step
+                    if samples and not due:
+                        from .hub import upload_samples
+                        upload_samples(tcfg.out_dir)
+                except Exception as e:  # noqa: BLE001
+                    print(f"[warn] sampling failed: {e}", flush=True)
+
             if due:
                 rng_by_rank = gather_rng_states() if world > 1 else [local_rng_state()]
             if due and is_main:
@@ -755,6 +780,16 @@ def main(argv=None) -> None:
     if has_final:
         rng_by_rank = gather_rng_states() if world > 1 else [local_rng_state()]
     if is_main and has_final:
+        if (tcfg.sample_on_checkpoint and last_sample_step != step
+                and tokenizer is not None and bos_id is not None):
+            try:
+                prompts = list(tcfg.sample_prompts) or ["The "]
+                samples = sample_texts(
+                    model, tokenizer, prompts, bos_id, eos_id, device, make_acx, step
+                )
+                append_samples(tcfg.out_dir, samples)
+            except Exception as e:  # noqa: BLE001
+                print(f"[warn] final sampling failed: {e}", flush=True)
         p = do_checkpoint(step, final=True, rng_by_rank=rng_by_rank)
         print(f"[final] step {step:,} -> {os.path.basename(p)} "
               f"| run wall {human_dt(time.time() - t_start)}", flush=True)

@@ -48,5 +48,7 @@ train:
   ckpt_every_steps: 1000
   ckpt_every_min: 10
   keep_last: 2
+  sample_on_eval: true
+  sample_on_checkpoint: true
   sample_prompts: ["The", "Wikipedia is"]
   wandb_project: neuron-wikipedia-pretrain
