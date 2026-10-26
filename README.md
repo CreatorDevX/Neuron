@@ -45,6 +45,8 @@ python -m neuron.train --config configs/neuron-100m-t4.yaml \
 
 The Colab and Kaggle launchers choose a preset from the available GPU count and accept a `MANUAL_TRAIN_OVERRIDES` list for any config values you want to change. During training, the configured prompts are generated after evaluation and checkpoint events. Samples are appended to `runs/neuron-pretrain/samples.jsonl` (or the configured run directory) and synced to the Hugging Face Storage Bucket at evaluation/checkpoint time, alongside checkpoint uploads.
 
+For an on-demand full-corpus run, use `python -m neuron.stream_train`. It prepares enough resumable token shards for the next configured number of steps, trains that chunk, then repeats until the source ends. `--steps-per-chunk` controls the number of optimizer steps requested per chunk; the token target is derived from the model's batch configuration. The stream cursor, document count, and token totals are stored in `data/progress.json`. Training uses append-only shard order so later chunks continue after the last trained token.
+
 ## Tokenizer
 
 The default is the fast tokenizer from [`meta-llama/Llama-2-7b-hf`](https://huggingface.co/meta-llama/Llama-2-7b-hf). Neuron downloads tokenizer assets only; it does not download or use Llama model weights. The Llama repository is gated: accept Meta's license terms and request access through Hugging Face before running setup. Set `HF_TOKEN` in `.env` to a Hugging Face user access token with read permission for the tokenizer.
@@ -77,7 +79,7 @@ python -m neuron.train_tokenizer --spec configs/data_spec.yaml --out tokenizer
 python -m neuron.prepare_data --spec configs/data_spec.yaml --out data
 ```
 
-The preparation cursor allows interrupted runs to resume. For longer Colab sessions, configure a Hugging Face Storage Bucket to sync data and checkpoints.
+The preparation cursor allows interrupted runs to resume. For longer Colab sessions, configure a Hugging Face Storage Bucket to sync data and checkpoints. For streaming shard preparation independent of training, `neuron.prepare_data --max-new-tokens N` adds approximately N training tokens and updates the resumable cursor.
 
 ## Credentials
 

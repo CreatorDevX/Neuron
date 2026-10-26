@@ -44,6 +44,76 @@ from .specials import EOD
 # --------------------------------------------------------------------------- #
 # source readers
 # --------------------------------------------------------------------------- #
+class ExampleStream:
+    """Text iterator with a resumable Hugging Face IterableDataset cursor."""
+
+    def __init__(self, source: dict, seed: int, src_index: int = 0, state: dict | None = None):
+        self.kind = source.get("kind", "hf_streaming")
+        self.iterator = None
+        self.dataset = None
+        self.state_restored = False
+        self.pending_texts: list[str] = []
+        self.pending_offset = 0
+        if self.kind == "hf_streaming":
+            from datasets import load_dataset
+
+            dcfg = dict(source["dataset"])
+            path = dcfg.pop("path")
+            name = dcfg.pop("name", None)
+            dataset = load_dataset(path, name, split=source.get("split", "train"),
+                                   streaming=True, **dcfg)
+            if source.get("stream_shuffle", True):
+                try:
+                    dataset = dataset.shuffle(buffer_size=8192, seed=seed)
+                except Exception:  # noqa: BLE001
+                    pass
+            self.dataset = dataset
+            if state and hasattr(dataset, "load_state_dict"):
+                dataset_state = dict(state)
+                self.pending_texts = list(dataset_state.pop("_neuron_pending_texts", []))
+                self.pending_offset = int(dataset_state.pop("_neuron_pending_offset", 0))
+                dataset.load_state_dict(dataset_state)
+                self.state_restored = True
+            self.iterator = iter(dataset)
+            self.text_field = source.get("text_field", "text")
+        else:
+            self.iterator = iter_examples(source, seed, src_index)
+
+    def __iter__(self):
+        if self.kind != "hf_streaming":
+            yield from self.iterator
+            return
+        while self.pending_offset < len(self.pending_texts):
+            text = self.pending_texts[self.pending_offset]
+            self.pending_offset += 1
+            yield text
+        self.pending_texts = []
+        self.pending_offset = 0
+        for row in self.iterator:
+            value = row.get(self.text_field)
+            if isinstance(value, list):
+                self.pending_texts = [v for v in value if isinstance(v, str) and v]
+            elif isinstance(value, str) and value:
+                self.pending_texts = [value]
+            else:
+                continue
+            self.pending_offset = 0
+            while self.pending_offset < len(self.pending_texts):
+                text = self.pending_texts[self.pending_offset]
+                self.pending_offset += 1
+                yield text
+            self.pending_texts = []
+            self.pending_offset = 0
+
+    def state_dict(self) -> dict | None:
+        if self.kind == "hf_streaming" and hasattr(self.dataset, "state_dict"):
+            state = dict(self.dataset.state_dict())
+            state["_neuron_pending_texts"] = self.pending_texts
+            state["_neuron_pending_offset"] = self.pending_offset
+            return state
+        return None
+
+
 def iter_examples(source: dict, seed: int, src_index: int = 0) -> Iterator[str]:
     kind = source.get("kind", "hf_streaming")
     if kind == "hf_streaming":
@@ -232,7 +302,8 @@ def clean_stale_shards(out_dir: Path, prefix: str) -> int:
 # tokenize + write (per source)
 # --------------------------------------------------------------------------- #
 def run_source(tokenizer, source: dict, sid: str, out_dir: Path, opts: dict,
-               prog: Progress, tokenizers_pass: int, seed: int) -> dict:
+               prog: Progress, tokenizers_pass: int, seed: int,
+               max_new_tokens: int = 0) -> dict:
     st_train = prog.get(sid, "train")
     st_val = prog.get(sid, "val")
     interval = int(opts["val_interval"])
@@ -240,6 +311,7 @@ def run_source(tokenizer, source: dict, sid: str, out_dir: Path, opts: dict,
     max_chars = int(opts["doc_max_chars"])
     max_tok = int(opts["doc_max_tokens"])
     target = int(source.get("max_tokens", 0))
+    start_train_tokens = int(st_train["tokens"])
     shard_tok = int(opts["shard_tokens"])
     buffer_tok = int(opts["buffer_tokens"])
     eod = tokenizer.token_to_id(EOD)
@@ -293,6 +365,10 @@ def run_source(tokenizer, source: dict, sid: str, out_dir: Path, opts: dict,
         st_train["shards"] = w_train.shard_idx
         st_val["tokens"] = w_val.total
         st_val["shards"] = w_val.shard_idx
+        if isinstance(stream, ExampleStream):
+            stream_state = stream.state_dict()
+            if stream_state is not None:
+                prog.state.setdefault(sid, {})["stream_state"] = stream_state
         prog.save()
         try:
             from .hub import upload_prepared_files
@@ -305,13 +381,17 @@ def run_source(tokenizer, source: dict, sid: str, out_dir: Path, opts: dict,
             w_train._open()
             w_val._open()
 
-    stream = iter_examples(source, seed=seed + tokenizers_pass, src_index=tokenizers_pass)
-    if doc_skip:
+    cursor = prog.state.get(sid, {}).get("stream_state")
+    stream = ExampleStream(source, seed=seed + tokenizers_pass, src_index=tokenizers_pass,
+                           state=cursor)
+    if doc_skip and not stream.state_restored:
+        if cursor:
+            print(f"[{sid}] installed datasets iterator cannot restore its saved cursor; "
+                  "falling back to document-count replay", flush=True)
         stream = it.islice(stream, doc_skip, None)
 
-    for text in stream:
-        if target > 0 and w_train.total >= target:
-            break
+    exhausted = target > 0 and w_train.total >= target
+    for text in (() if exhausted else stream):
         docs_seen += 1
         if len(text) < min_chars:
             continue
@@ -332,6 +412,15 @@ def run_source(tokenizer, source: dict, sid: str, out_dir: Path, opts: dict,
                   f"({speed/1e3:.0f}k tok/s, "
                   f"eta {'unknown' if target <= 0 else f'{eta_min:.0f}m'})", flush=True)
             commit_progress()
+        if len(batch) == 0 and (target > 0 or max_new_tokens > 0):
+            w_train.flush_buffer()
+            w_val.flush_buffer()
+            reached_source_limit = target > 0 and w_train.total >= target
+            reached_chunk_limit = (max_new_tokens > 0 and
+                                   w_train.total - start_train_tokens >= max_new_tokens)
+            if reached_source_limit or reached_chunk_limit:
+                exhausted = False
+                break
 
     commit_progress(final=True)
 
@@ -341,8 +430,10 @@ def run_source(tokenizer, source: dict, sid: str, out_dir: Path, opts: dict,
     st_train["shards"] = w_train.shard_idx
     st_val["tokens"] = w_val.total
     st_val["shards"] = w_val.shard_idx
+    prog.state.setdefault(sid, {})["exhausted"] = exhausted
     prog.save()
-    return {"docs": docs_processed, "train_tokens": w_train.total, "val_tokens": w_val.total}
+    return {"docs": docs_processed, "train_tokens": w_train.total,
+            "val_tokens": w_val.total, "exhausted": exhausted}
 
 
 # --------------------------------------------------------------------------- #
@@ -383,6 +474,8 @@ def main() -> int:
     ap.add_argument("--tokenizer", default=None)
     ap.add_argument("--workers", type=int, default=0,
                     help="0 = tokenizer's internal parallelism (recommended)")
+    ap.add_argument("--max-new-tokens", type=int, default=0,
+                    help="stop after adding about this many training tokens (0 = source max_tokens/full stream)")
     args = ap.parse_args()
 
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "true")
@@ -436,7 +529,12 @@ def main() -> int:
     for k, source in enumerate(sources):
         sid = source.get("id", f"src{k}")
         print(f"[prep] source {sid} (kind={source.get('kind')})", flush=True)
-        info = run_source(tokenizer, source, sid, out_dir, opts, prog, k, 1337)
+        if args.max_new_tokens > 0 and source.get("kind", "hf_streaming") == "hf_streaming":
+            # HF's public state_dict can resume the stream position but not
+            # its shuffle buffer. Keep the source order stable across chunks.
+            source["stream_shuffle"] = False
+        info = run_source(tokenizer, source, sid, out_dir, opts, prog, k, 1337,
+                          max_new_tokens=args.max_new_tokens)
         totals["train"] += info["train_tokens"]
         totals["val"] += info["val_tokens"]
         print(f"[prep] {sid}: {info['train_tokens']:,} train tok "

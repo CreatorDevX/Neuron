@@ -37,6 +37,7 @@ import yaml
 from . import __version__
 from .checkpoint import (
     build_run_identity,
+    run_identity_extends,
     load_checkpoint,
     prune_checkpoints,
     read_latest,
@@ -281,6 +282,10 @@ def main(argv=None) -> None:
     ap.add_argument("--out-dir", default=None)
     ap.add_argument("--resume", default="auto", help="auto | none | <ckpt.pt>")
     ap.add_argument("--max-steps", type=int, default=0)
+    ap.add_argument("--schedule-steps", type=int, default=0,
+                    help="fixed LR schedule horizon for chunked runs")
+    ap.add_argument("--stream-chunk", action="store_true",
+                    help="use append-only shard order for resumable streamed-data chunks")
     ap.add_argument("--set", nargs="*", default=[], dest="overrides")
     ap.add_argument("--wandb", action="store_true")
     ap.add_argument("--disable-wandb", action="store_true",
@@ -402,7 +407,8 @@ def main(argv=None) -> None:
         raise ValueError(f"manifest vocab_size={m_vocab} != model vocab_size={mcfg.vocab_size}")
 
     seq = mcfg.seq_len
-    train_ds = TokenDataset(tcfg.data_dir, "train", seq_len=seq, shuffle=True, seed=tcfg.seed)
+    train_ds = TokenDataset(tcfg.data_dir, "train", seq_len=seq,
+                            shuffle=not args.stream_chunk, seed=tcfg.seed)
     val_ds = TokenDataset(tcfg.data_dir, tcfg.val_split, seq_len=seq, shuffle=False, seed=tcfg.seed)
     if is_main:
         print(
@@ -413,7 +419,9 @@ def main(argv=None) -> None:
         )
 
     steps_total = total_steps(tcfg, world, mcfg)
-    warmup = warmup_steps_(tcfg, world, mcfg)
+    schedule_total_steps = args.schedule_steps or steps_total
+    schedule_cfg = dataclasses.replace(tcfg, max_steps=schedule_total_steps)
+    warmup = warmup_steps_(schedule_cfg, world, mcfg)
     tps_step = world_tokens_per_step(tcfg, world, mcfg)
 
     val_loader = make_loader(
@@ -495,7 +503,7 @@ def main(argv=None) -> None:
         if saved_identity is None:
             if is_main:
                 print("[warn] checkpoint predates input identity metadata; data/tokenizer match is unverified", flush=True)
-        elif saved_identity != run_identity:
+        elif saved_identity != run_identity and not run_identity_extends(saved_identity, run_identity):
             raise ValueError("checkpoint data/tokenizer identity differs from the current inputs; use --resume none for a new run")
         start_step = int(state["step"])
         tokens_seen = int(state.get("tokens_seen", start_step * tps_step))
@@ -505,7 +513,7 @@ def main(argv=None) -> None:
         else:
             remaining_tokens = max(0, tcfg.total_tokens - tokens_seen)
             steps_total = start_step + math.ceil(remaining_tokens / tps_step)
-        warmup = warmup_steps_(tcfg, world, mcfg)
+        warmup = warmup_steps_(schedule_cfg, world, mcfg)
         print(f"[resume] {path} @ step {start_step:,} ({tokens_seen:,} tok); "
               f"target step {steps_total:,}", flush=True)
     else:
@@ -623,7 +631,7 @@ def main(argv=None) -> None:
                 break
             optimizer.zero_grad(set_to_none=True)
             # LR for step `step` is applied BEFORE this step's optimizer.step()
-            lr_now = lr_at(step, tcfg, steps_total, warmup)
+            lr_now = lr_at(step, tcfg, schedule_total_steps, warmup)
             for g in optimizer.param_groups:
                 g["lr"] = lr_now
             t_step = time.time()

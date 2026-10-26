@@ -101,6 +101,20 @@ def build_run_identity(data_dir: str, tokenizer_path: str) -> dict:
     }
 
 
+def run_identity_extends(saved: dict, current: dict) -> bool:
+    """Allow an append-only prepared stream to add shards between checkpoints."""
+    if saved.get("tokenizer_sha256") != current.get("tokenizer_sha256"):
+        return False
+    current_shards = {
+        (s.get("path"), s.get("size"), s.get("mtime_ns"), s.get("split"))
+        for s in current.get("shards", [])
+    }
+    return all(
+        (s.get("path"), s.get("size"), s.get("mtime_ns"), s.get("split")) in current_shards
+        for s in saved.get("shards", [])
+    )
+
+
 def sha256_file(path: str) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as f:

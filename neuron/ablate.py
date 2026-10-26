@@ -259,10 +259,12 @@ def main() -> None:
     if args.iters < 1 or args.warmup < 0 or args.decode_tokens < 1:
         ap.error("iters/decode-tokens must be positive and warmup non-negative")
     mcfg, tcfg = build_configs(args.config)
-    device = torch.device(args.device)
+    device = torch.device(args.device.strip())
     if device.type == "cuda" and not torch.cuda.is_available():
         raise SystemExit("CUDA requested but torch.cuda.is_available() is false")
     if device.type == "cuda":
+        if device.index is None:
+            device = torch.device("cuda", torch.cuda.current_device())
         torch.cuda.set_device(device)
         print(f"GPU: {torch.cuda.get_device_name(device)} | peak reference: {peak_flops()/1e12:.1f} TFLOP/s")
     if args.dtype == "auto":

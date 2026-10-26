@@ -1,5 +1,6 @@
 # Core (training box, Linux/NVIDIA)
 torch==2.9.1
+torchvision==0.24.1
 numpy>=1.26
 pyyaml>=6.0
 tqdm>=4.66
