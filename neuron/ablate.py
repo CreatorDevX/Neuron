@@ -275,6 +275,9 @@ def main() -> None:
             dtypes = [names[n] for n in _parse_csv(args.dtype)]
         except KeyError as exc:
             ap.error(f"unknown dtype {exc.args[0]!r}; choose fp16,bf16,fp32")
+    if (device.type == "cuda" and torch.bfloat16 in dtypes
+            and not torch.cuda.is_bf16_supported(including_emulation=False)):
+        ap.error("bf16 requires native BF16 hardware support; use --dtype fp16 on a T4")
     modes = set(_parse_csv(args.modes))
     if not modes or modes - {"train", "decode", "all"}:
         ap.error("--modes must contain train, decode, and/or all")

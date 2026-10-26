@@ -50,7 +50,7 @@ train:
   grad_clip: 1.0
   optimizer_type: muon_adamw_8bit
 
-  dtype: auto                 # T4 -> float16 (no bf16 on Turing) + GradScaler
+  dtype: float16              # T4 supports FP16, not BF16; use GradScaler
   compile: false              # sparse reference path chunks queries in eager Python
   compile_mode: default       # try max-autotune-no-cudagraphs in a side bench
   compile_dynamic: false

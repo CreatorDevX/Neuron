@@ -106,10 +106,17 @@ def resolve_amp(device: torch.device, requested: str):
     if requested == "float32":
         return torch.float32, False, False
     if requested == "auto":
-        if device.type == "cuda" and torch.cuda.is_bf16_supported():
-            return torch.bfloat16, True, True
+        if device.type != "cuda":
+            return torch.float32, False, False
+        # PyTorch's default probe includes BF16 emulation. Restrict automatic
+        # selection to native hardware support (Ampere or newer).
+        if torch.cuda.is_bf16_supported(including_emulation=False):
+            return torch.bfloat16, True, False
         return torch.float16, True, True
     dt = getattr(torch, requested)
+    if (dt == torch.bfloat16 and device.type == "cuda"
+            and not torch.cuda.is_bf16_supported(including_emulation=False)):
+        raise ValueError("bfloat16 requires native BF16 hardware support; use float16 on a T4")
     return dt, device.type == "cuda", dt == torch.float16
 
 

@@ -34,7 +34,7 @@ train:
   warmup_tokens: 20000000
   stable_ratio: 0.8
   optimizer_type: muon_adamw_8bit
-  dtype: auto
+  dtype: float16
   compile: false
   compile_mode: default
   grad_checkpointing: true

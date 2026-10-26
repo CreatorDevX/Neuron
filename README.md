@@ -2,7 +2,7 @@
 
 Neuron is a public project for training and evaluating compact decoder-only language models on NVIDIA T4 GPUs. The repository includes the model, Wikipedia data pipeline, tokenizer setup, trainer, resumable checkpoints, evaluation, generation, benchmarks, and a Google Colab notebook.
 
-The default preset combines block-sparse causal attention, grouped-query attention, a repeating attention/Gated DeltaNet (GDN) layer pattern, and Engram hashed n-gram memory. It is approximately 146M parameters with the current Engram tables. The block-sparse path is a PyTorch SDPA reference implementation; it does not require a separate attention fork. GDN uses Flash Linear Attention when available and can fall back to its PyTorch reference implementation.
+The default preset combines block-sparse causal attention, grouped-query attention, a repeating attention/Gated DeltaNet (GDN) layer pattern, and Engram hashed n-gram memory. It is approximately 146M parameters with the current Engram tables. The block-sparse path is a PyTorch SDPA reference implementation; it does not require a separate attention fork. T4 presets select Flash Linear Attention for GDN and FP16 for mixed precision.
 
 ## Current status and roadmap
 
@@ -18,8 +18,8 @@ For a local or hosted Linux GPU environment:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
 python -m pip install "flash-linear-attention[cuda]"
+python -m pip install -r requirements.txt
 ```
 
 Copy `.env.example` to `.env` and fill in credentials for the services you use. The file is ignored by Git. Then launch the default preset:
