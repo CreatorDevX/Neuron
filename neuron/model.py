@@ -748,13 +748,16 @@ class GatedDeltaNet(nn.Module):
             try:
                 from fla.ops.gated_delta_rule import chunk_gated_delta_rule
                 fla_op = chunk_gated_delta_rule
-            except ImportError:
+            except Exception as exc:  # noqa: BLE001
                 if self.backend == "fla":
-                    raise RuntimeError("gdn_backend='fla' requires flash-linear-attention installed")
+                    raise RuntimeError(
+                        "gdn_backend='fla' could not import flash-linear-attention; "
+                        f"check its PyTorch/CUDA binary dependencies ({exc})"
+                    ) from exc
                 if not GatedDeltaNet._warned_missing_fla:
                     warnings.warn(
-                        "flash-linear-attention is unavailable; GDN is using the slow PyTorch "
-                        "reference recurrence. Install FLA or set model.gdn_backend='fla'.",
+                        "flash-linear-attention failed to import; GDN is using the slow PyTorch "
+                        f"reference recurrence ({exc}). Check the FLA and PyTorch binary versions.",
                         RuntimeWarning,
                     )
                     GatedDeltaNet._warned_missing_fla = True

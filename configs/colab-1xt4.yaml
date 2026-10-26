@@ -11,7 +11,7 @@ model:
   tie_embeddings: true
   attention: block_sparse
   hybrid_gdn: true
-  gdn_backend: auto
+  gdn_backend: fla
   gdn_conv_kernel_size: 4
   sparse_block_size: 128
   sparse_top_blocks: 4

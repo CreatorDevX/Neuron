@@ -16,7 +16,7 @@ model:
   init_std: 0.02
   attention: block_sparse
   hybrid_gdn: true            # attention on layer 0, then three GDN layers; repeat
-  gdn_backend: auto            # use FLA when installed, otherwise PyTorch reference
+  gdn_backend: fla             # use Flash Linear Attention on T4
   gdn_conv_kernel_size: 4
   sparse_block_size: 128
   sparse_top_blocks: 4

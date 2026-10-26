@@ -144,7 +144,7 @@ Apache-2.0 license does not cover these third-party files; see
 - `configs/smoke-test.yaml` — small CPU workflow for development.
 - `configs/neuron-32k-hybrid.yaml` — experimental long-context configuration.
 
-Block-sparse attention is implemented in Neuron using PyTorch SDPA over selected remote blocks and a local causal window. This reference path is compatible with the configured layer pattern and KV cache, but has Python and gather overhead. The optional `flash_turing` backend requires the separately installed Turing extension; it is not required by the default preset.
+The T4 presets select Flash Linear Attention (`gdn_backend: fla`) for GDN. Install it with the command above; the matched `torch`, `torchvision`, and `torchaudio` versions in `requirements.txt` avoid binary ABI mismatches. Set `model.gdn_backend=torch` only when intentionally using the slower PyTorch GDN recurrence. Block-sparse attention uses Neuron's PyTorch SDPA implementation over selected remote blocks and a local causal window. The separate `flash_turing` extension is only needed for its attention benchmark.
 
 ## Tests and checks
 

@@ -51,7 +51,7 @@ def sample_docs(spec: dict, per_source_mb: float, out_path: Path, seed: int) -> 
     return total
 
 
-def main() -> None:
+def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--spec", default="configs/data_spec.yaml")
     ap.add_argument("--out", default="tokenizer")
@@ -63,7 +63,7 @@ def main() -> None:
                     help="use this pretrained tokenizer repo instead of the one in the spec")
     ap.add_argument("--train-new", action="store_true",
                     help="train a new byte-level BPE tokenizer instead of reusing a pretrained one")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
 

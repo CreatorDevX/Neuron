@@ -15,7 +15,7 @@ model:
   init_std: 0.02
   attention: block_sparse    # local causal window + selected older blocks
   hybrid_gdn: true           # attention every fourth layer, GDN in the other three
-  gdn_backend: auto           # use FLA when installed, otherwise the slower PyTorch reference
+  gdn_backend: fla            # use Flash Linear Attention on T4
   gdn_conv_kernel_size: 4
   sparse_block_size: 128
   sparse_top_blocks: 4

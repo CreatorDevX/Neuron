@@ -24,9 +24,7 @@ import dataclasses
 import json
 import math
 import os
-import subprocess
 import signal
-import sys
 import time
 from pathlib import Path
 from typing import Iterator, List
@@ -338,18 +336,20 @@ def main(argv=None) -> None:
                     "before switching tokenizer IDs"
                 )
             if not tokenizer_ready:
-                tokenizer_cmd = [
-                    sys.executable, "-m", "neuron.train_tokenizer", "--spec", args.spec,
-                    "--out", os.path.dirname(tcfg.tokenizer_path) or "tokenizer",
+                from .train_tokenizer import main as tokenizer_main
+                tokenizer_args = [
+                    "--spec", args.spec, "--out",
+                    os.path.dirname(tcfg.tokenizer_path) or "tokenizer",
                 ]
                 if args.train_new_tokenizer:
-                    tokenizer_cmd.append("--train-new")
-                subprocess.run(tokenizer_cmd, check=True)
+                    tokenizer_args.append("--train-new")
+                tokenizer_main(tokenizer_args)
             if not os.path.isfile(manifest_file):
-                subprocess.run([
-                    sys.executable, "-m", "neuron.prepare_data", "--spec", args.spec,
-                    "--out", tcfg.data_dir, "--tokenizer", tcfg.tokenizer_path,
-                ], check=True)
+                from .prepare_data import main as prepare_data_main
+                prepare_data_main([
+                    "--spec", args.spec, "--out", tcfg.data_dir,
+                    "--tokenizer", tcfg.tokenizer_path,
+                ])
                 try:
                     from .hub import sync_data
                     sync_data(tcfg.data_dir, download=False)

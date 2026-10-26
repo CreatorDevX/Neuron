@@ -467,7 +467,7 @@ def build_manifest(out_dir: Path, tok_path: str, vocab_size: int, sources: list[
 # --------------------------------------------------------------------------- #
 # main
 # --------------------------------------------------------------------------- #
-def main() -> int:
+def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--spec", default="configs/data_spec.yaml")
     ap.add_argument("--out", default="data")
@@ -476,7 +476,7 @@ def main() -> int:
                     help="0 = tokenizer's internal parallelism (recommended)")
     ap.add_argument("--max-new-tokens", type=int, default=0,
                     help="stop after adding about this many training tokens (0 = source max_tokens/full stream)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "true")
     from tokenizers import Tokenizer
